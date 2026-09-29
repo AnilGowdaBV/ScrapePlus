@@ -8,10 +8,18 @@ import {
   useSearchResults,
   useSelectedSearch,
 } from "./hooks/useSearches";
-import { getExportCsvUrl, getExportXlsxUrl } from "./api/client";
+import {
+  disconnectLinkedInSession,
+  getExportCsvUrl,
+  getExportXlsxUrl,
+  getLinkedInSession,
+  saveLinkedInSession,
+} from "./api/client";
 import type { SearchStatus } from "./types/api";
 
 type HealthResponse = { status: string; service: string };
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
 const TERMINAL_STATUSES: SearchStatus[] = [
   "COMPLETED",
@@ -21,7 +29,7 @@ const TERMINAL_STATUSES: SearchStatus[] = [
 ];
 
 async function fetchHealth(): Promise<HealthResponse> {
-  const response = await fetch("/api/health");
+  const response = await fetch(`${API_BASE_URL}/api/health`);
   if (!response.ok) throw new Error("Backend unavailable");
   return response.json() as Promise<HealthResponse>;
 }
@@ -64,6 +72,11 @@ export default function App() {
     queryFn: fetchHealth,
     retry: false,
   });
+  const linkedinSession = useQuery({
+    queryKey: ["linkedin-session"],
+    queryFn: getLinkedInSession,
+    retry: false,
+  });
   const history = useSearchHistory();
   const createMutation = useCreateSearch();
   const deleteMutation = useDeleteSearch();
@@ -74,6 +87,45 @@ export default function App() {
   const [maxPages, setMaxPages] = useState(5);
   const [formError, setFormError] = useState<string | null>(null);
   const hasInitializedRef = useRef(false);
+
+  // LinkedIn Connect Modal state
+  const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
+  const [cookieInput, setCookieInput] = useState("");
+  const [sessionSaving, setSessionSaving] = useState(false);
+  const [sessionError, setSessionError] = useState<string | null>(null);
+
+  async function handleSaveSession() {
+    if (!cookieInput.trim()) {
+      setSessionError("Please paste your li_at cookie.");
+      return;
+    }
+    setSessionSaving(true);
+    setSessionError(null);
+    try {
+      await saveLinkedInSession(cookieInput.trim());
+      await linkedinSession.refetch();
+      setCookieInput("");
+      setIsConnectModalOpen(false);
+    } catch (err) {
+      setSessionError(getErrorMessage(err));
+    } finally {
+      setSessionSaving(false);
+    }
+  }
+
+  async function handleDisconnectSession() {
+    if (!window.confirm("Disconnect your saved LinkedIn session?")) return;
+    setSessionSaving(true);
+    try {
+      await disconnectLinkedInSession();
+      await linkedinSession.refetch();
+      setIsConnectModalOpen(false);
+    } catch (err) {
+      setSessionError(getErrorMessage(err));
+    } finally {
+      setSessionSaving(false);
+    }
+  }
 
   const selectedSearch = useSelectedSearch(selectedSearchId);
   const isSearchActive =
@@ -166,13 +218,23 @@ export default function App() {
           <span className="brand-mark" aria-hidden="true">⚡</span>
           <span>ScrapePulse</span>
         </a>
-        <div className="connection-indicator" role="status">
-          <span className={`connection-dot ${health.isSuccess ? "online" : ""}`} aria-hidden="true" />
-          {health.isLoading
-            ? "Connecting"
-            : health.isSuccess
-              ? "Backend connected"
-              : "Backend unavailable"}
+        <div className="header-actions">
+          <button
+            type="button"
+            className={`linkedin-connect-btn ${linkedinSession.data?.connected ? "connected" : ""}`}
+            onClick={() => setIsConnectModalOpen(true)}
+          >
+            <span className="btn-icon">{linkedinSession.data?.connected ? "✓" : "🔗"}</span>
+            <span>{linkedinSession.data?.connected ? "LinkedIn Connected" : "Connect LinkedIn"}</span>
+          </button>
+          <div className="connection-indicator" role="status">
+            <span className={`connection-dot ${health.isSuccess ? "online" : ""}`} aria-hidden="true" />
+            {health.isLoading
+              ? "Connecting"
+              : health.isSuccess
+                ? "Backend connected"
+                : "Backend unavailable"}
+          </div>
         </div>
       </header>
 
@@ -243,7 +305,26 @@ export default function App() {
                   <div><span>Records found</span><strong>{run?.records_found ?? 0}</strong></div>
                 </div>
                 <div className="timestamps"><span>Started {formatDate(selectedSearch.data.started_at)}</span><span>Completed {formatDate(selectedSearch.data.completed_at)}</span><span>Provider {run?.provider ?? "Not assigned"}</span><button className="text-button danger" onClick={deleteSelectedSearch} disabled={deleteMutation.isPending}>Delete search</button></div>
-                {selectedSearch.data.error_message && <p className="error-message" role="alert">{selectedSearch.data.error_message}</p>}
+                {selectedSearch.data.error_message && (
+                  <div className="status-error-box">
+                    <p className="error-message" role="alert">{selectedSearch.data.error_message}</p>
+                    {selectedSearch.data.error_message.includes("LOGIN_REQUIRED") && (
+                      <div className="login-prompt-banner">
+                        <div>
+                          <strong>LinkedIn Login Required</strong>
+                          <p>LinkedIn requires an active session to view people search results.</p>
+                        </div>
+                        <button
+                          type="button"
+                          className="primary-button small"
+                          onClick={() => setIsConnectModalOpen(true)}
+                        >
+                          Connect LinkedIn Session
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </section>
 
               <section className="results-panel" aria-labelledby="results-title">
@@ -322,6 +403,94 @@ export default function App() {
           </div>
         </section>
       </main>
+
+      {isConnectModalOpen && (
+        <div className="modal-backdrop" onClick={() => setIsConnectModalOpen(false)}>
+          <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h3>Connect LinkedIn Account</h3>
+                <p className="modal-subtitle">Authenticate your session to scrape search results</p>
+              </div>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setIsConnectModalOpen(false)}
+                aria-label="Close modal"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="modal-body">
+              {linkedinSession.data?.connected ? (
+                <div className="connected-status-card">
+                  <div>
+                    <div className="badge-connected">✅ LinkedIn Session Connected</div>
+                    <p>Your session cookie is active ({linkedinSession.data.masked_cookie}).</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="text-button danger"
+                    onClick={handleDisconnectSession}
+                    disabled={sessionSaving}
+                  >
+                    Disconnect
+                  </button>
+                </div>
+              ) : null}
+
+              <div className="instructions-card">
+                <h4>How to get your session cookie (30 seconds):</h4>
+                <ol>
+                  <li>
+                    Open <a href="https://www.linkedin.com" target="_blank" rel="noreferrer">LinkedIn.com</a> in your browser and ensure you are logged in.
+                  </li>
+                  <li>
+                    Press <strong>F12</strong> (or right-click ➔ <em>Inspect</em>) to open Developer Tools.
+                  </li>
+                  <li>
+                    Click the <strong>Application</strong> tab (or <em>Storage</em> in Firefox) ➔ expand <strong>Cookies</strong> on the left ➔ click <code>https://www.linkedin.com</code>.
+                  </li>
+                  <li>
+                    Find the cookie named <strong><code>li_at</code></strong>, double-click its value, copy it, and paste it below.
+                  </li>
+                </ol>
+              </div>
+
+              <label className="modal-input-label">
+                <span>LinkedIn <code>li_at</code> Cookie</span>
+                <textarea
+                  className="cookie-textarea"
+                  rows={2}
+                  value={cookieInput}
+                  onChange={(e) => setCookieInput(e.target.value)}
+                  placeholder="AQEDAT... (paste your li_at cookie here)"
+                />
+              </label>
+              {sessionError && <p className="error-message" role="alert">{sessionError}</p>}
+            </div>
+
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setIsConnectModalOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="primary-button"
+                onClick={handleSaveSession}
+                disabled={sessionSaving || !cookieInput.trim()}
+              >
+                {sessionSaving ? "Saving..." : "Save & Connect"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

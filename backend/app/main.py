@@ -4,8 +4,9 @@ from fastapi import FastAPI
 
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.app.api.routes.searches import router as searches_router
 from backend.app.api.routes.health import router as health_router
+from backend.app.api.routes.searches import router as searches_router
+from backend.app.api.routes.settings import router as settings_router
 from backend.app.core.config import get_settings
 from backend.app.database.session import SessionLocal
 from backend.app.providers.factory import ProviderFactory, default_provider_factory
@@ -31,6 +32,7 @@ def create_app(
     )
     application.include_router(health_router, prefix=settings.api_prefix)
     application.include_router(searches_router, prefix=settings.api_prefix)
+    application.include_router(settings_router, prefix=settings.api_prefix)
     application.state.session_factory = session_factory
     application.state.orchestrator = SearchOrchestrator(
         session_factory,

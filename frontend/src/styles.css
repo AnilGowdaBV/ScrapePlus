@@ -135,3 +135,43 @@ td small { display: block; max-width: 240px; overflow: hidden; margin-top: 5px; 
   .pagination { align-items: start; flex-direction: column; }
   .pagination > div { width: 100%; justify-content: space-between; }
 }
+
+/* LinkedIn Connect & Modal Styles */
+.header-actions { display: flex; align-items: center; gap: 16px; }
+.linkedin-connect-btn { display: inline-flex; align-items: center; gap: 7px; padding: 7px 14px; border: 1px solid var(--line); border-radius: 20px; background: #fff; color: var(--ink); font-size: 0.75rem; font-weight: 700; transition: all 140ms ease; }
+.linkedin-connect-btn:hover { border-color: var(--teal); background: #f4faf8; }
+.linkedin-connect-btn.connected { border-color: #b3dfce; background: #e8f6f0; color: #1e6d56; }
+.btn-icon { font-size: 0.82rem; }
+
+.status-error-box { margin-top: 18px; }
+.login-prompt-banner { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 14px; padding: 14px 18px; border: 1px solid #f3c2b8; border-radius: 6px; background: #fff6f4; color: #8a3428; }
+.login-prompt-banner strong { display: block; font-size: 0.84rem; margin-bottom: 3px; color: #a34235; }
+.login-prompt-banner p { margin: 0; font-size: 0.78rem; color: #6d423b; line-height: 1.4; }
+.primary-button.small { min-height: 36px; padding: 0 16px; font-size: 0.78rem; gap: 8px; flex-shrink: 0; }
+
+.modal-backdrop { position: fixed; inset: 0; background: rgba(24, 52, 58, 0.45); backdrop-filter: blur(3px); display: grid; place-items: center; z-index: 1000; padding: 20px; }
+.modal-dialog { width: min(560px, 96vw); max-height: 90vh; overflow-y: auto; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 24px 60px rgba(24, 52, 58, 0.25); padding: 28px; }
+.modal-header { display: flex; align-items: start; justify-content: space-between; gap: 16px; margin-bottom: 20px; border-bottom: 1px solid var(--line); padding-bottom: 14px; }
+.modal-header h3 { margin: 0 0 4px; font-family: Georgia, serif; font-size: 1.3rem; color: var(--ink); }
+.modal-subtitle { margin: 0; color: var(--muted); font-size: 0.8rem; }
+.modal-close { border: 0; background: transparent; color: var(--muted); font-size: 1.2rem; line-height: 1; padding: 4px; cursor: pointer; }
+.modal-close:hover { color: var(--ink); }
+
+.modal-body { display: grid; gap: 18px; }
+.connected-status-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border: 1px solid #bce2d3; border-radius: 6px; background: #edf9f4; }
+.badge-connected { font-weight: 800; font-size: 0.8rem; color: #1e6d56; }
+.connected-status-card p { margin: 3px 0 0; font-size: 0.73rem; color: var(--muted); }
+
+.instructions-card { padding: 14px 18px; border: 1px solid #d5e7e1; border-radius: 6px; background: #f0f7f5; }
+.instructions-card h4 { margin: 0 0 10px; font-size: 0.8rem; color: var(--teal); font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; }
+.instructions-card ol { margin: 0; padding-left: 20px; color: var(--ink); font-size: 0.78rem; line-height: 1.6; }
+.instructions-card li { margin-bottom: 6px; }
+.instructions-card code { background: #e0eee9; padding: 2px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; }
+
+.modal-input-label { display: grid; gap: 8px; color: var(--ink); font-size: 0.78rem; font-weight: 800; }
+.cookie-textarea { width: 100%; border: 1px solid #c9d9d4; border-radius: 5px; outline: none; background: #fff; color: var(--ink); padding: 10px; font-family: Consolas, monospace; font-size: 0.8rem; resize: vertical; }
+.cookie-textarea:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgb(23 107 99 / 12%); }
+
+.modal-footer { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--line); }
+.secondary-button { min-height: 40px; padding: 0 18px; border: 1px solid var(--line); border-radius: 5px; background: #fff; color: var(--ink); font-size: 0.82rem; font-weight: 700; transition: background 120ms ease; }
+.secondary-button:hover { background: #f0f5f3; }

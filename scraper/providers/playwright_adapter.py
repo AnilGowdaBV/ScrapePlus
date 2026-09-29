@@ -24,11 +24,13 @@ class PlaywrightPageLoader:
         headless: bool = False,
         cdp_url: str | None = None,
         timeout_ms: int = 30000,
+        cookies: list[dict[str, Any]] | None = None,
     ) -> None:
         self.user_data_dir = Path(user_data_dir)
         self.headless = headless
         self.cdp_url = cdp_url
         self.timeout_ms = timeout_ms
+        self.cookies = cookies or []
         self._playwright: Playwright | None = None
         self._context: BrowserContext | None = None
         self._page: Page | None = None
@@ -61,6 +63,12 @@ class PlaywrightPageLoader:
                     viewport=None,
                     args=["--start-maximized"],
                 )
+
+        if self.cookies and self._context:
+            try:
+                await self._context.add_cookies(self.cookies)
+            except Exception:
+                pass
 
         pages = self._context.pages
         self._page = pages[0] if pages else await self._context.new_page()

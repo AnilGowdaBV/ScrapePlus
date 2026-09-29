@@ -66,3 +66,25 @@ export function getExportCsvUrl(searchId: number): string {
 export function getExportXlsxUrl(searchId: number): string {
   return `${API_BASE_URL}/api/searches/${searchId}/export/xlsx`;
 }
+
+export interface LinkedInSessionStatus {
+  connected: boolean;
+  masked_cookie: string | null;
+}
+
+export function getLinkedInSession() {
+  return request<LinkedInSessionStatus>("/api/settings/linkedin-session");
+}
+
+export function saveLinkedInSession(li_at: string) {
+  return request<LinkedInSessionStatus>("/api/settings/linkedin-session", {
+    method: "POST",
+    body: JSON.stringify({ li_at }),
+  });
+}
+
+export function disconnectLinkedInSession() {
+  return request<LinkedInSessionStatus>("/api/settings/linkedin-session", {
+    method: "DELETE",
+  });
+}
