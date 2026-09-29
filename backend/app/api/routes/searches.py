@@ -1,4 +1,4 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
 from backend.app.api.dependencies import get_orchestrator, get_session
@@ -47,6 +47,7 @@ def _summary(
 def create_search(
     payload: CreateSearchRequest,
     background_tasks: BackgroundTasks,
+    request: Request,
     session: Session = Depends(get_session),
     orchestrator: SearchOrchestrator = Depends(get_orchestrator),
 ) -> CreateSearchResponse:
@@ -64,7 +65,8 @@ def create_search(
         session.rollback()
         raise HTTPException(status_code=500, detail="Could not create search") from error
 
-    background_tasks.add_task(orchestrator.run, search.id, run.id, payload.max_pages)
+    cookie = payload.session_cookie or request.headers.get("X-LinkedIn-Cookie")
+    background_tasks.add_task(orchestrator.run, search.id, run.id, payload.max_pages, cookie)
     return CreateSearchResponse(search_id=search.id, run_id=run.id, status=search.status)
 
 

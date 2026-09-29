@@ -10,11 +10,15 @@ import {
 } from "./hooks/useSearches";
 import {
   disconnectLinkedInSession,
+  getDeviceCookie,
   getExportCsvUrl,
   getExportXlsxUrl,
   getLinkedInSession,
+  loginWithCredentials,
   openLoginBrowser,
+  saveDeviceCookie,
   saveLinkedInSession,
+  submit2Fa,
 } from "./api/client";
 import type { SearchStatus } from "./types/api";
 
@@ -91,11 +95,92 @@ export default function App() {
 
   // LinkedIn Connect Modal state
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
+  const [loginTab, setLoginTab] = useState<"credentials" | "cookie">("credentials");
+  const [emailInput, setEmailInput] = useState("");
+  const [passwordInput, setPasswordInput] = useState("");
+  const [twoFactorSessionId, setTwoFactorSessionId] = useState<string | null>(null);
+  const [twoFactorPin, setTwoFactorPin] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authSuccessMsg, setAuthSuccessMsg] = useState<string | null>(null);
+
   const [cookieInput, setCookieInput] = useState("");
   const [sessionSaving, setSessionSaving] = useState(false);
   const [sessionError, setSessionError] = useState<string | null>(null);
   const [openingBrowser, setOpeningBrowser] = useState(false);
   const [browserMsg, setBrowserMsg] = useState<string | null>(null);
+
+  async function handleCredentialsLogin(e: FormEvent) {
+    e.preventDefault();
+    if (!emailInput.trim() || !passwordInput.trim()) {
+      setSessionError("Please enter both LinkedIn email and password.");
+      return;
+    }
+    setAuthLoading(true);
+    setSessionError(null);
+    setAuthSuccessMsg(null);
+    try {
+      const res = await loginWithCredentials({
+        email: emailInput.trim(),
+        password: passwordInput.trim(),
+      });
+      if (res.status === "SUCCESS") {
+        if (res.cookie) {
+          saveDeviceCookie(res.cookie);
+        }
+        await linkedinSession.refetch();
+        setAuthSuccessMsg("🎉 Connected to LinkedIn! Session saved on this device.");
+        setTimeout(() => {
+          setIsConnectModalOpen(false);
+          setAuthSuccessMsg(null);
+          setEmailInput("");
+          setPasswordInput("");
+        }, 1500);
+      } else if (res.status === "REQUIRES_2FA" && res.session_id) {
+        setTwoFactorSessionId(res.session_id);
+      } else {
+        setSessionError(res.message || "Login failed. Please check your credentials.");
+      }
+    } catch (err) {
+      setSessionError(getErrorMessage(err));
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  async function handleVerify2Fa(e: FormEvent) {
+    e.preventDefault();
+    if (!twoFactorSessionId || !twoFactorPin.trim()) {
+      setSessionError("Please enter the verification code.");
+      return;
+    }
+    setAuthLoading(true);
+    setSessionError(null);
+    try {
+      const res = await submit2Fa({
+        session_id: twoFactorSessionId,
+        code: twoFactorPin.trim(),
+      });
+      if (res.status === "SUCCESS") {
+        if (res.cookie) {
+          saveDeviceCookie(res.cookie);
+        }
+        await linkedinSession.refetch();
+        setAuthSuccessMsg("🎉 Verification confirmed! Session saved on this device.");
+        setTimeout(() => {
+          setIsConnectModalOpen(false);
+          setTwoFactorSessionId(null);
+          setTwoFactorPin("");
+          setAuthSuccessMsg(null);
+        }, 1500);
+      } else {
+        setSessionError(res.message || "Invalid verification code.");
+      }
+    } catch (err) {
+      setSessionError(getErrorMessage(err));
+    } finally {
+      setAuthLoading(false);
+    }
+  }
 
   async function handleOpenBrowser() {
     setOpeningBrowser(true);
@@ -136,7 +221,11 @@ export default function App() {
       await saveLinkedInSession(cookieInput.trim());
       await linkedinSession.refetch();
       setCookieInput("");
-      setIsConnectModalOpen(false);
+      setAuthSuccessMsg("🎉 Session saved on this device!");
+      setTimeout(() => {
+        setIsConnectModalOpen(false);
+        setAuthSuccessMsg(null);
+      }, 1000);
     } catch (err) {
       setSessionError(getErrorMessage(err));
     } finally {
@@ -458,7 +547,7 @@ export default function App() {
                 <div className="connected-status-card">
                   <div>
                     <div className="badge-connected">✅ LinkedIn Session Connected</div>
-                    <p>Your session cookie is active ({linkedinSession.data.masked_cookie}).</p>
+                    <p>Session active on this device ({linkedinSession.data.masked_cookie}).</p>
                   </div>
                   <button
                     type="button"
@@ -471,57 +560,177 @@ export default function App() {
                 </div>
               ) : null}
 
-              <div className="login-browser-card">
-                <div>
-                  <h4>✨ Recommended: One-Click Browser Login</h4>
+              {twoFactorSessionId ? (
+                <div className="two-factor-card">
+                  <h4>🔐 Enter LinkedIn Verification Code</h4>
                   <p>
-                    Click below to open LinkedIn in Chrome. Simply enter your LinkedIn email and password to log in. ScrapePlus will save your session automatically!
+                    LinkedIn detected a login attempt and sent a 6-digit verification code to your registered email or phone. Enter it below to finish connecting:
                   </p>
+                  <form onSubmit={handleVerify2Fa} className="credentials-form">
+                    <input
+                      type="text"
+                      className="credentials-input pin-input"
+                      value={twoFactorPin}
+                      onChange={(e) => setTwoFactorPin(e.target.value)}
+                      placeholder="123456"
+                      maxLength={8}
+                      autoFocus
+                      required
+                    />
+                    {sessionError && <p className="error-message" role="alert">{sessionError}</p>}
+                    {authSuccessMsg && <p className="success-banner">{authSuccessMsg}</p>}
+                    <div style={{ display: "flex", gap: "10px" }}>
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => {
+                          setTwoFactorSessionId(null);
+                          setTwoFactorPin("");
+                          setSessionError(null);
+                        }}
+                      >
+                        ← Back
+                      </button>
+                      <button
+                        type="submit"
+                        className="primary-button"
+                        style={{ flex: 1 }}
+                        disabled={authLoading || !twoFactorPin.trim()}
+                      >
+                        {authLoading ? "Verifying..." : "Verify & Save Session"}
+                      </button>
+                    </div>
+                  </form>
                 </div>
-                <button
-                  type="button"
-                  className="primary-button full-width"
-                  onClick={handleOpenBrowser}
-                  disabled={openingBrowser}
-                >
-                  {openingBrowser ? "Opening Chrome..." : "🚀 Open LinkedIn in Chrome to Log In"}
-                </button>
-                {browserMsg && <p className="success-banner">{browserMsg}</p>}
-              </div>
+              ) : (
+                <>
+                  <div className="login-tabs">
+                    <button
+                      type="button"
+                      className={`login-tab-btn ${loginTab === "credentials" ? "active" : ""}`}
+                      onClick={() => {
+                        setLoginTab("credentials");
+                        setSessionError(null);
+                      }}
+                    >
+                      🔑 Sign In with LinkedIn
+                    </button>
+                    <button
+                      type="button"
+                      className={`login-tab-btn ${loginTab === "cookie" ? "active" : ""}`}
+                      onClick={() => {
+                        setLoginTab("cookie");
+                        setSessionError(null);
+                      }}
+                    >
+                      🍪 Manual Cookie
+                    </button>
+                  </div>
 
-              <div className="divider-row">
-                <span>OR MANUAL COOKIE</span>
-              </div>
+                  {loginTab === "credentials" ? (
+                    <form onSubmit={handleCredentialsLogin} className="credentials-form">
+                      <label className="modal-input-label">
+                        <span>LinkedIn Email or Phone</span>
+                        <input
+                          type="text"
+                          className="credentials-input"
+                          value={emailInput}
+                          onChange={(e) => setEmailInput(e.target.value)}
+                          placeholder="e.g. name@company.com"
+                          required
+                          autoComplete="username"
+                        />
+                      </label>
+                      <label className="modal-input-label">
+                        <span>LinkedIn Password</span>
+                        <input
+                          type="password"
+                          className="credentials-input"
+                          value={passwordInput}
+                          onChange={(e) => setPasswordInput(e.target.value)}
+                          placeholder="••••••••"
+                          required
+                          autoComplete="current-password"
+                        />
+                      </label>
+                      <div className="device-saved-badge">
+                        🔒 Session is authenticated and saved exclusively on this device.
+                      </div>
+                      {sessionError && <p className="error-message" role="alert">{sessionError}</p>}
+                      {authSuccessMsg && <p className="success-banner">{authSuccessMsg}</p>}
+                      <button
+                        type="submit"
+                        className="primary-button full-width"
+                        disabled={authLoading || !emailInput.trim() || !passwordInput.trim()}
+                      >
+                        {authLoading ? "Signing into LinkedIn..." : "Sign In to LinkedIn"}
+                      </button>
+                    </form>
+                  ) : (
+                    <div style={{ display: "grid", gap: "14px" }}>
+                      <div className="instructions-card">
+                        <h4>How to get your session cookie (30 seconds):</h4>
+                        <ol>
+                          <li>
+                            Open <a href="https://www.linkedin.com" target="_blank" rel="noreferrer">LinkedIn.com</a> in your browser and ensure you are logged in.
+                          </li>
+                          <li>
+                            Press <strong>F12</strong> to open Developer Tools.
+                          </li>
+                          <li>
+                            Click <strong>Application</strong> ➔ expand <strong>Cookies</strong> ➔ click <code>https://www.linkedin.com</code>.
+                          </li>
+                          <li>
+                            Find <strong><code>li_at</code></strong>, copy its value, and paste below.
+                          </li>
+                        </ol>
+                      </div>
 
-              <div className="instructions-card">
-                <h4>How to get your session cookie (30 seconds):</h4>
-                <ol>
-                  <li>
-                    Open <a href="https://www.linkedin.com" target="_blank" rel="noreferrer">LinkedIn.com</a> in your browser and ensure you are logged in.
-                  </li>
-                  <li>
-                    Press <strong>F12</strong> (or right-click ➔ <em>Inspect</em>) to open Developer Tools.
-                  </li>
-                  <li>
-                    Click the <strong>Application</strong> tab (or <em>Storage</em> in Firefox) ➔ expand <strong>Cookies</strong> on the left ➔ click <code>https://www.linkedin.com</code>.
-                  </li>
-                  <li>
-                    Find the cookie named <strong><code>li_at</code></strong>, double-click its value, copy it, and paste it below.
-                  </li>
-                </ol>
-              </div>
+                      <label className="modal-input-label">
+                        <span>LinkedIn <code>li_at</code> Cookie</span>
+                        <textarea
+                          className="cookie-textarea"
+                          rows={2}
+                          value={cookieInput}
+                          onChange={(e) => setCookieInput(e.target.value)}
+                          placeholder="AQEDAT... (paste your li_at cookie here)"
+                        />
+                      </label>
+                      {sessionError && <p className="error-message" role="alert">{sessionError}</p>}
+                      {authSuccessMsg && <p className="success-banner">{authSuccessMsg}</p>}
+                      <button
+                        type="button"
+                        className="primary-button full-width"
+                        onClick={handleSaveSession}
+                        disabled={sessionSaving || !cookieInput.trim()}
+                      >
+                        {sessionSaving ? "Saving..." : "Save Session on this Device"}
+                      </button>
+                    </div>
+                  )}
 
-              <label className="modal-input-label">
-                <span>LinkedIn <code>li_at</code> Cookie</span>
-                <textarea
-                  className="cookie-textarea"
-                  rows={2}
-                  value={cookieInput}
-                  onChange={(e) => setCookieInput(e.target.value)}
-                  placeholder="AQEDAT... (paste your li_at cookie here)"
-                />
-              </label>
-              {sessionError && <p className="error-message" role="alert">{sessionError}</p>}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "12px", borderTop: "1px solid var(--line)", paddingTop: "10px" }}>
+                    <a
+                      href="https://www.linkedin.com/login"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="collapsible-toggle"
+                    >
+                      ↗ Open official LinkedIn.com in new tab
+                    </a>
+                    {window.location.hostname === "localhost" && (
+                      <button
+                        type="button"
+                        className="text-button"
+                        onClick={handleOpenBrowser}
+                        disabled={openingBrowser}
+                      >
+                        {openingBrowser ? "Launching..." : "🖥️ Open Local Chrome"}
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="modal-footer">
@@ -530,15 +739,7 @@ export default function App() {
                 className="secondary-button"
                 onClick={() => setIsConnectModalOpen(false)}
               >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="primary-button"
-                onClick={handleSaveSession}
-                disabled={sessionSaving || !cookieInput.trim()}
-              >
-                {sessionSaving ? "Saving..." : "Save & Connect"}
+                Close
               </button>
             </div>
           </div>

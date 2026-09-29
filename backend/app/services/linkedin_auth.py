@@ -58,11 +58,14 @@ def login_with_credentials_sync(email: str, password: str) -> dict[str, Any]:
         cookies = context.cookies()
         for c in cookies:
             if c.get("name") == "li_at" and c.get("value"):
-                save_linkedin_cookie(c["value"])
+                cookie_val = c["value"]
+                save_linkedin_cookie(cookie_val)
                 browser.close()
                 p.stop()
                 return {
                     "status": "SUCCESS",
+                    "cookie": cookie_val,
+                    "masked_cookie": f"{cookie_val[:6]}...{cookie_val[-4:]}",
                     "message": "Successfully authenticated with LinkedIn!",
                 }
 
@@ -112,11 +115,14 @@ def login_with_credentials_sync(email: str, password: str) -> dict[str, Any]:
         cookies = context.cookies()
         for c in cookies:
             if c.get("name") == "li_at" and c.get("value"):
-                save_linkedin_cookie(c["value"])
+                cookie_val = c["value"]
+                save_linkedin_cookie(cookie_val)
                 browser.close()
                 p.stop()
                 return {
                     "status": "SUCCESS",
+                    "cookie": cookie_val,
+                    "masked_cookie": f"{cookie_val[:6]}...{cookie_val[-4:]}",
                     "message": "Successfully authenticated with LinkedIn!",
                 }
 
@@ -167,12 +173,15 @@ def submit_2fa_code_sync(session_id: str, code: str) -> dict[str, Any]:
         cookies = context.cookies()
         for c in cookies:
             if c.get("name") == "li_at" and c.get("value"):
-                save_linkedin_cookie(c["value"])
+                cookie_val = c["value"]
+                save_linkedin_cookie(cookie_val)
                 _PENDING_2FA.pop(session_id, None)
                 browser.close()
                 p.stop()
                 return {
                     "status": "SUCCESS",
+                    "cookie": cookie_val,
+                    "masked_cookie": f"{cookie_val[:6]}...{cookie_val[-4:]}",
                     "message": "Verification confirmed! LinkedIn is now connected.",
                 }
 

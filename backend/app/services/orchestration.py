@@ -28,7 +28,13 @@ class SearchOrchestrator:
     def provider_name(self) -> str:
         return getattr(self.provider_factory, "provider_name", "people_provider")
 
-    async def run(self, search_id: int, run_id: int, max_pages: int) -> None:
+    async def run(
+        self,
+        search_id: int,
+        run_id: int,
+        max_pages: int,
+        cookie: str | None = None,
+    ) -> None:
         session = self.session_factory()
         try:
             search = session.get(Search, search_id)
@@ -46,7 +52,10 @@ class SearchOrchestrator:
 
             records_found = 0
             records_saved = 0
-            provider = self.provider_factory()
+            try:
+                provider = self.provider_factory(cookie=cookie)
+            except TypeError:
+                provider = self.provider_factory()
             try:
                 async for result in provider.search(search.search_url, max_pages=max_pages):
                     records_found += 1

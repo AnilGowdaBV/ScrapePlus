@@ -8,9 +8,9 @@ from scraper.providers.playwright_adapter import PlaywrightPageLoader, Playwrigh
 ProviderFactory = Callable[[], PeopleSearchProvider]
 
 
-def default_provider_factory() -> PeopleSearchProvider:
+def default_provider_factory(cookie: str | None = None) -> PeopleSearchProvider:
     settings = get_settings()
-    raw_cookie = get_linkedin_cookie()
+    raw_cookie = cookie or get_linkedin_cookie()
     cookies = parse_linkedin_cookies(raw_cookie) if raw_cookie else None
 
     loader = PlaywrightPageLoader(

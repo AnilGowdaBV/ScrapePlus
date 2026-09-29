@@ -7,14 +7,39 @@ import type {
 } from "../types/api";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
+const STORAGE_COOKIE_KEY = "scrapeplus_linkedin_li_at";
+
+export function getDeviceCookie(): string | null {
+  try {
+    return localStorage.getItem(STORAGE_COOKIE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function saveDeviceCookie(cookie: string): void {
+  try {
+    localStorage.setItem(STORAGE_COOKIE_KEY, cookie.trim());
+  } catch {}
+}
+
+export function clearDeviceCookie(): void {
+  try {
+    localStorage.removeItem(STORAGE_COOKIE_KEY);
+  } catch {}
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const deviceCookie = getDeviceCookie();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(deviceCookie ? { "X-LinkedIn-Cookie": deviceCookie } : {}),
+    ...(init?.headers as Record<string, string>),
+  };
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
+    headers,
   });
 
   if (!response.ok) {
@@ -33,9 +58,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export function createSearch(payload: CreateSearchPayload) {
+  const deviceCookie = getDeviceCookie();
   return request<CreateSearchResponse>("/api/searches", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      ...payload,
+      session_cookie: deviceCookie || undefined,
+    }),
   });
 }
 
@@ -72,20 +101,69 @@ export interface LinkedInSessionStatus {
   masked_cookie: string | null;
 }
 
-export function getLinkedInSession() {
-  return request<LinkedInSessionStatus>("/api/settings/linkedin-session");
+export async function getLinkedInSession(): Promise<LinkedInSessionStatus> {
+  const localCookie = getDeviceCookie();
+  if (localCookie) {
+    const masked =
+      localCookie.length > 10
+        ? `${localCookie.slice(0, 6)}...${localCookie.slice(-4)}`
+        : "******";
+    return { connected: true, masked_cookie: masked };
+  }
+  try {
+    return await request<LinkedInSessionStatus>("/api/settings/linkedin-session");
+  } catch {
+    return { connected: false, masked_cookie: null };
+  }
 }
 
-export function saveLinkedInSession(li_at: string) {
-  return request<LinkedInSessionStatus>("/api/settings/linkedin-session", {
+export async function saveLinkedInSession(li_at: string): Promise<LinkedInSessionStatus> {
+  saveDeviceCookie(li_at);
+  try {
+    return await request<LinkedInSessionStatus>("/api/settings/linkedin-session", {
+      method: "POST",
+      body: JSON.stringify({ li_at }),
+    });
+  } catch {
+    // Graceful fallback to client-side storage if server endpoint is pending deployment
+    const masked =
+      li_at.length > 10
+        ? `${li_at.slice(0, 6)}...${li_at.slice(-4)}`
+        : "******";
+    return { connected: true, masked_cookie: masked };
+  }
+}
+
+export async function disconnectLinkedInSession(): Promise<LinkedInSessionStatus> {
+  clearDeviceCookie();
+  try {
+    return await request<LinkedInSessionStatus>("/api/settings/linkedin-session", {
+      method: "DELETE",
+    });
+  } catch {
+    return { connected: false, masked_cookie: null };
+  }
+}
+
+export interface LoginResponse {
+  status: "SUCCESS" | "REQUIRES_2FA" | "CAPTCHA" | "ERROR";
+  session_id?: string;
+  cookie?: string;
+  masked_cookie?: string;
+  message: string;
+}
+
+export function loginWithCredentials(payload: { email: string; password: string }) {
+  return request<LoginResponse>("/api/settings/login-credentials", {
     method: "POST",
-    body: JSON.stringify({ li_at }),
+    body: JSON.stringify(payload),
   });
 }
 
-export function disconnectLinkedInSession() {
-  return request<LinkedInSessionStatus>("/api/settings/linkedin-session", {
-    method: "DELETE",
+export function submit2Fa(payload: { session_id: string; code: string }) {
+  return request<LoginResponse>("/api/settings/submit-2fa", {
+    method: "POST",
+    body: JSON.stringify(payload),
   });
 }
 

@@ -10,6 +10,7 @@ from scraper.people.url import InvalidPeopleSearchUrl, validate_people_search_ur
 class CreateSearchRequest(BaseModel):
     search_url: str
     max_pages: int = Field(default=1, ge=1, le=1000)
+    session_cookie: str | None = None
 
     @field_validator("search_url")
     @classmethod
