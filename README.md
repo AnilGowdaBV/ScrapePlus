@@ -142,6 +142,199 @@ npm run build      # Bundle into lisesca.user.js
 
 The build output is `lisesca.user.js` in the project root.
 
+## LiSeSca People Search Platform (Phases 1–10)
+
+LiSeSca is a professional LinkedIn People Search platform that turns user-authorized LinkedIn People Search queries into normalized, persistent, and exportable lead databases.
+
+### Key Principles & Safety Boundary
+
+- **People Search Only**: Exclusively parses LinkedIn People Search results. Job scraping and AI enrichment are outside V1 scope.
+- **User-Supplied Exact URLs**: The user navigates LinkedIn, applies filters, and pastes the exact People Search URL (`https://www.linkedin.com/search/results/people/?...`). All query parameters and filters are strictly preserved across pagination.
+- **Authorized Browser Execution**: Runs via local Playwright automation in a user-visible browser session. No credentials or session tokens are stored, requested, or stolen.
+- **No Evasion or Anti-Bot Bypass**: Strictly does NOT bypass CAPTCHA, authentication, rate limits, or access restrictions. When LinkedIn presents a login wall or security challenge, the search run safely halts and reports `LOGIN_REQUIRED` or `CAPTCHA`.
+- **Separation of Tests & Live LinkedIn**: Automated pytest and frontend checks run with deterministic fakes and local fixtures, never depending on external LinkedIn availability.
+
+---
+
+### Architecture
+
+```text
+                    USER
+                     │
+                     ▼
+              React Dashboard (Vite + TypeScript + TanStack Query)
+                     │
+                     ▼
+                FastAPI API (Pydantic v2 + SQLite + Alembic)
+                     │
+                     ▼
+             Search Orchestrator (Lifecycle & Background Tasks)
+                     │
+                     ▼
+           PeopleSearchProvider (Injectable Provider Boundary)
+                     │
+                     ▼
+          Playwright Browser Adapter (Authorized Local Browser)
+                     │
+                     ▼
+          Authorized Browser Page (Visible Window / User Session)
+                     │
+                     ▼
+          Existing Phase 3 Parser (Robust Card Extractor & Classifier)
+                     │
+                     ▼
+          Normalized People Results (Nullable fields, deduplicated)
+                     │
+                     ▼
+             Persistence Layer (SQLAlchemy 2.x Repository)
+                     │
+                     ▼
+                  SQLite (searches, search_runs, leads)
+                     │
+                     ▼
+              React Results (Paginated 25 / 50 / 100)
+                     │
+              ┌──────┴──────┐
+              ▼             ▼
+          CSV Export    XLSX Export
+         (RFC 4180)     (openpyxl)
+```
+
+---
+
+### Setup & Installation
+
+#### 1. Backend
+
+```bash
+# From project root
+python -m venv .venv
+.venv\Scripts\activate          # Windows PowerShell / CMD
+# source .venv/bin/activate     # macOS / Linux
+
+pip install -r backend/requirements.txt
+playwright install chromium
+alembic upgrade head
+```
+
+#### 2. Frontend
+
+```bash
+cd frontend
+npm install
+```
+
+#### 3. Configuration
+
+Copy `.env.example` to `.env`:
+
+```env
+APP_NAME=LiSeSca People Search Platform
+APP_VERSION=0.1.0
+ENVIRONMENT=development
+DATABASE_URL=sqlite:///./database/lisesca.db
+API_PREFIX=/api
+
+# Browser Execution Settings
+BROWSER_HEADLESS=false
+BROWSER_USER_DATA_DIR=./database/browser_profile
+# BROWSER_CDP_URL=http://localhost:9222
+BROWSER_TIMEOUT_MS=30000
+```
+
+---
+
+### Running the Application
+
+#### 1. Start Backend API
+
+```bash
+uvicorn backend.app.main:app --reload --port 8000
+```
+
+Health check is available at `http://127.0.0.1:8000/api/health`.
+
+#### 2. Start Frontend Dashboard
+
+```bash
+cd frontend
+npm run dev
+```
+
+Open `http://localhost:5173` in your browser. Vite proxies `/api` calls to the backend automatically.
+
+---
+
+### User Workflow
+
+1. **LinkedIn Search**: In your regular browser, perform a People search on LinkedIn with desired filters (e.g. keywords, geography, company).
+2. **Copy URL**: Copy the full browser URL (`https://www.linkedin.com/search/results/people/?keywords=...`).
+3. **Paste in LiSeSca**: Paste into the URL input on the dashboard and select `Max pages`.
+4. **Start Search**: Click **Start Search**.
+5. **Execution & Status**: The local authorized browser navigates to the URL. The dashboard polls the active status (`QUEUED` → `RUNNING`).
+   - If not logged in, the visible browser displays LinkedIn's sign-in screen. Sign in manually.
+   - If CAPTCHA or access restriction appears, the search safely transitions to `FAILED` or `PARTIAL`.
+6. **Results & Pagination**: When complete (`COMPLETED` or `PARTIAL`), polling automatically stops and leads appear in the paginated table.
+7. **Export**: Click **Export CSV** or **Export XLSX** to download backend-generated files without loading all records into browser memory.
+
+---
+
+### Export Contract
+
+Exports contain **strictly** normalized card data:
+1. **Company**: Extracted company name or empty string.
+2. **Person Name**: Extracted full name or empty string.
+3. **Title / Headline**: Extracted title and headline combined cleanly.
+4. **Location**: Geographic location or empty string.
+5. **LinkedIn Profile URL**: Canonical LinkedIn profile URL.
+
+No internal database IDs, raw attributes, or inferred roles (e.g. HR, Recruiter, Founder) are added or fabricated.
+
+- **CSV**: Standard RFC 4180 format with `utf-8-sig` encoding (Excel-compatible Unicode support).
+- **XLSX**: Native Excel workbook generated with `openpyxl`.
+
+---
+
+### Manual Developer Browser Test
+
+To verify live browser integration end-to-end:
+
+1. Start the backend: `uvicorn backend.app.main:app --port 8000`.
+2. Start the frontend: `cd frontend && npm run dev`.
+3. Open `http://localhost:5173`.
+4. If not logged into LinkedIn in your profile, log into LinkedIn in the browser window launched by LiSeSca (or in Chrome with `--remote-debugging-port=9222`).
+5. Copy a valid LinkedIn People Search URL from your browser.
+6. Paste the URL into the LiSeSca dashboard, set max pages to `1`, and click **Start Search**.
+7. Watch the status panel update from `QUEUED` to `RUNNING` to `COMPLETED`.
+8. Verify result leads render with Company, Name, Headline, Location, and LinkedIn profile link.
+9. Click **Export CSV** and **Export XLSX** and verify the downloaded files open correctly.
+10. Test deletion: click **Delete search**, confirm prompt, and verify history and details clear cleanly.
+
+---
+
+### Automated Quality Checks
+
+```bash
+# Run backend & scraper test suite
+.venv\Scripts\python.exe -m pytest
+
+# Run frontend typecheck & production bundle build
+cd frontend
+cmd /c npm run typecheck
+cmd /c npm run build
+
+# Database migration status
+alembic current
+```
+
+---
+
+### Known Limitations
+
+- **LinkedIn Markup Drift**: LinkedIn periodically changes CSS classes and DOM layout. Semantic selector fallbacks and fixture testing minimize, but do not eliminate, this maintenance need.
+- **Rate Limits & Challenges**: Account limits, commercial use limits, and CAPTCHAs are managed by LinkedIn; the application respects these and halts immediately upon challenge.
+- **SQLite Concurrency**: SQLite with WAL mode is used for local single-user execution. PostgreSQL migration can be introduced via existing repository boundaries if multi-user concurrency is required later.
+
 ## Disclaimer
 
 This tool is intended for personal use to assist with job searching and networking. Use responsibly and in accordance with LinkedIn's Terms of Service. Excessive or abusive scraping may result in account restrictions.

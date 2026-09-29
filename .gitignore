@@ -1,0 +1,32 @@
+# Environment and secrets
+.env
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Local database
+database/*.db
+database/*.sqlite
+database/*.sqlite3
+database/browser_profile/
+.browser_profile/
+
+
+# Frontend dependencies and build output
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
+
+# Editor and OS files
+.vscode/
+.DS_Store
+Thumbs.db
