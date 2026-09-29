@@ -51,18 +51,24 @@ class PlaywrightPageLoader:
             try:
                 self._context = await self._playwright.chromium.launch_persistent_context(
                     str(self.user_data_dir),
-                    channel="chrome",
                     headless=self.headless,
                     viewport=None,
                     args=["--start-maximized"],
                 )
             except Exception:
-                self._context = await self._playwright.chromium.launch_persistent_context(
-                    str(self.user_data_dir),
-                    headless=self.headless,
-                    viewport=None,
-                    args=["--start-maximized"],
-                )
+                # If profile directory is locked by another process, launch fresh browser
+                try:
+                    self._browser = await self._playwright.chromium.launch(
+                        headless=self.headless,
+                        args=["--start-maximized"],
+                    )
+                    self._context = await self._browser.new_context(viewport=None)
+                except Exception:
+                    # Final fallback
+                    self._browser = await self._playwright.chromium.launch(
+                        headless=self.headless,
+                    )
+                    self._context = await self._browser.new_context()
 
         if self.cookies and self._context:
             try:
@@ -173,6 +179,13 @@ class PlaywrightPageLoader:
                 pass
             self._context = None
             self._page = None
+
+        if hasattr(self, "_browser") and self._browser is not None:
+            try:
+                await self._browser.close()
+            except Exception:
+                pass
+            self._browser = None
 
         if self._playwright is not None:
             try:
