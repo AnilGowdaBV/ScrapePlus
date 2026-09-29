@@ -7,6 +7,10 @@ from pydantic import BaseModel
 from playwright.async_api import async_playwright
 
 from backend.app.core.config import get_settings
+from backend.app.services.linkedin_auth import (
+    login_with_credentials_sync,
+    submit_2fa_code_sync,
+)
 from backend.app.services.settings import (
     delete_linkedin_cookie,
     get_linkedin_cookie,
@@ -23,6 +27,34 @@ class LinkedInSessionPayload(BaseModel):
 class LinkedInSessionStatus(BaseModel):
     connected: bool
     masked_cookie: str | None = None
+
+
+class CredentialsLoginPayload(BaseModel):
+    email: str
+    password: str
+
+
+class TwoFactorPayload(BaseModel):
+    session_id: str
+    code: str
+
+
+@router.post("/login-credentials")
+async def login_with_credentials(payload: CredentialsLoginPayload) -> dict[str, Any]:
+    """Logs into LinkedIn using user's email and password via backend automation."""
+    if not payload.email.strip() or not payload.password.strip():
+        raise HTTPException(status_code=400, detail="Email and password are required.")
+    result = await asyncio.to_thread(login_with_credentials_sync, payload.email, payload.password)
+    return result
+
+
+@router.post("/submit-2fa")
+async def submit_2fa(payload: TwoFactorPayload) -> dict[str, Any]:
+    """Submits the 2FA code for a pending login session."""
+    if not payload.session_id.strip() or not payload.code.strip():
+        raise HTTPException(status_code=400, detail="Session ID and verification code are required.")
+    result = await asyncio.to_thread(submit_2fa_code_sync, payload.session_id, payload.code)
+    return result
 
 
 async def _run_login_browser() -> None:
@@ -97,6 +129,10 @@ def disconnect_session() -> LinkedInSessionStatus:
     return LinkedInSessionStatus(connected=False, masked_cookie=None)
 
 
+import subprocess
+import sys
+
+
 @router.post("/open-login-browser")
 async def open_login_browser() -> dict[str, str]:
     """Open a visible Chrome browser window for user to log into LinkedIn directly."""
@@ -106,5 +142,6 @@ async def open_login_browser() -> dict[str, str]:
             status_code=400,
             detail="Interactive browser requires running locally with a display (BROWSER_HEADLESS=false).",
         )
-    asyncio.create_task(_run_login_browser())
-    return {"message": "Browser opened for LinkedIn login. Log in with your ID and password."}
+    script_path = str(Path("scripts/open_browser.py").resolve())
+    subprocess.Popen([sys.executable, script_path])
+    return {"message": "Chrome window opened! Log in with your ID and password."}
