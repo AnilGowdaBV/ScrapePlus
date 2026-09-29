@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: scrapeplus-backend
+    env: docker
+    dockerfilePath: Dockerfile
+    plan: free
+    region: oregon
+    envVars:
+      - key: BROWSER_HEADLESS
+        value: "true"
+      - key: DATABASE_URL
+        value: sqlite:///./database/lisesca.db
+      - key: API_PREFIX
+        value: /api
