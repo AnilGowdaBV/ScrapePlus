@@ -13,6 +13,7 @@ import {
   getExportCsvUrl,
   getExportXlsxUrl,
   getLinkedInSession,
+  openLoginBrowser,
   saveLinkedInSession,
 } from "./api/client";
 import type { SearchStatus } from "./types/api";
@@ -93,6 +94,36 @@ export default function App() {
   const [cookieInput, setCookieInput] = useState("");
   const [sessionSaving, setSessionSaving] = useState(false);
   const [sessionError, setSessionError] = useState<string | null>(null);
+  const [openingBrowser, setOpeningBrowser] = useState(false);
+  const [browserMsg, setBrowserMsg] = useState<string | null>(null);
+
+  async function handleOpenBrowser() {
+    setOpeningBrowser(true);
+    setBrowserMsg(null);
+    setSessionError(null);
+    try {
+      const res = await openLoginBrowser();
+      setBrowserMsg(res.message);
+      // Auto-poll session status to detect when user finishes logging in
+      const interval = setInterval(async () => {
+        try {
+          const status = await getLinkedInSession();
+          if (status.connected) {
+            clearInterval(interval);
+            await linkedinSession.refetch();
+            setBrowserMsg("🎉 Logged in and session saved successfully!");
+          }
+        } catch {
+          // Ignore polling errors
+        }
+      }, 3000);
+      setTimeout(() => clearInterval(interval), 120000);
+    } catch (err) {
+      setSessionError(getErrorMessage(err));
+    } finally {
+      setOpeningBrowser(false);
+    }
+  }
 
   async function handleSaveSession() {
     if (!cookieInput.trim()) {
@@ -439,6 +470,28 @@ export default function App() {
                   </button>
                 </div>
               ) : null}
+
+              <div className="login-browser-card">
+                <div>
+                  <h4>✨ Recommended: One-Click Browser Login</h4>
+                  <p>
+                    Click below to open LinkedIn in Chrome. Simply enter your LinkedIn email and password to log in. ScrapePlus will save your session automatically!
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="primary-button full-width"
+                  onClick={handleOpenBrowser}
+                  disabled={openingBrowser}
+                >
+                  {openingBrowser ? "Opening Chrome..." : "🚀 Open LinkedIn in Chrome to Log In"}
+                </button>
+                {browserMsg && <p className="success-banner">{browserMsg}</p>}
+              </div>
+
+              <div className="divider-row">
+                <span>OR MANUAL COOKIE</span>
+              </div>
 
               <div className="instructions-card">
                 <h4>How to get your session cookie (30 seconds):</h4>

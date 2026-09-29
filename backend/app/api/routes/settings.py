@@ -1,6 +1,12 @@
+import asyncio
+from pathlib import Path
+from typing import Any
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from playwright.async_api import async_playwright
 
+from backend.app.core.config import get_settings
 from backend.app.services.settings import (
     delete_linkedin_cookie,
     get_linkedin_cookie,
@@ -17,6 +23,51 @@ class LinkedInSessionPayload(BaseModel):
 class LinkedInSessionStatus(BaseModel):
     connected: bool
     masked_cookie: str | None = None
+
+
+async def _run_login_browser() -> None:
+    """Launch a visible Chrome window to let user log into LinkedIn interactively."""
+    settings = get_settings()
+    profile_dir = Path(settings.browser_user_data_dir).resolve()
+    profile_dir.mkdir(parents=True, exist_ok=True)
+
+    async with async_playwright() as p:
+        try:
+            context = await p.chromium.launch_persistent_context(
+                str(profile_dir),
+                channel="chrome",
+                headless=False,
+                viewport=None,
+                args=["--start-maximized"],
+            )
+        except Exception:
+            context = await p.chromium.launch_persistent_context(
+                str(profile_dir),
+                headless=False,
+                viewport=None,
+                args=["--start-maximized"],
+            )
+
+        page = context.pages[0] if context.pages else await context.new_page()
+        try:
+            await page.goto("https://www.linkedin.com/login")
+            while not page.is_closed():
+                await asyncio.sleep(1)
+                # Auto-detect when user logs in and extract li_at
+                try:
+                    cookies = await context.cookies()
+                    for c in cookies:
+                        if c.get("name") == "li_at" and c.get("value"):
+                            save_linkedin_cookie(c["value"])
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        finally:
+            try:
+                await context.close()
+            except Exception:
+                pass
 
 
 @router.get("/linkedin-session", response_model=LinkedInSessionStatus)
@@ -44,3 +95,16 @@ def save_session(payload: LinkedInSessionPayload) -> LinkedInSessionStatus:
 def disconnect_session() -> LinkedInSessionStatus:
     delete_linkedin_cookie()
     return LinkedInSessionStatus(connected=False, masked_cookie=None)
+
+
+@router.post("/open-login-browser")
+async def open_login_browser() -> dict[str, str]:
+    """Open a visible Chrome browser window for user to log into LinkedIn directly."""
+    settings = get_settings()
+    if settings.browser_headless:
+        raise HTTPException(
+            status_code=400,
+            detail="Interactive browser requires running locally with a display (BROWSER_HEADLESS=false).",
+        )
+    asyncio.create_task(_run_login_browser())
+    return {"message": "Browser opened for LinkedIn login. Log in with your ID and password."}

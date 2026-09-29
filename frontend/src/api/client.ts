@@ -88,3 +88,9 @@ export function disconnectLinkedInSession() {
     method: "DELETE",
   });
 }
+
+export function openLoginBrowser() {
+  return request<{ message: string }>("/api/settings/open-login-browser", {
+    method: "POST",
+  });
+}
